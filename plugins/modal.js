@@ -1,65 +1,106 @@
+Element.prototype.appendAfter = function (element) {
+ element.parentNode.insertBefore(this, element.nextSibling)
+}
+
+function noop() {}
+
+function _createModalFooter(buttons = []) {
+    if (buttons.length === 0) {
+        return document.createElement('div')
+    }
+    const wrap = document.createElement('div')
+    wrap.classList.add('modal-footer')
+    
+    buttons.forEach(btn => {
+        const $btn = document.createElement('button')
+        $btn.textContent = btn.text
+        $btn.classList.add('btn')
+        $btn.classList.add(`btn-${btn.type || 'secondary'}`)
+        
+        $btn.onclick = btn.handler || noop;
+        wrap.appendChild($btn)
+    })
+    
+    return wrap
+}
+
 function _createModal(options) {
+    const DEFAULT_WIDTH = '600px'
     const modal = document.createElement('div')
     modal.classList.add('vmodal')
     modal.insertAdjacentHTML('afterbegin', `
-    <div class="modal-overlay">
-        <div class="modal-window">
+    <div class="modal-overlay" data-close="true">
+        <div class="modal-window" style="width: ${options.width || DEFAULT_WIDTH}">
             <div class="modal-header">
-                <span class="modal-title">Modal Title</span>
-                <span class="modal-close">&times;</span>
+                <span class="modal-title">
+                    ${options.title || 'Заголовок'}
+                </span>
+                ${options.closable ? `<span class="modal-close" data-close="true">&times;</span>` : ``}
             </div>
-            <div class="modal-body">
-                <p>Lorem ipsum dolor sit.</p>
-                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Distinctio dolorem et id ipsam porro quia
-                    quo repellat repellendus reprehenderit repudiandae.</p>
+            <div class="modal-body" data-content>
+                ${options.content || ''}
             </div>
-            <div class="modal-footer">
-                <button>Ok</button>
-                <button>Cancel</button>
-            </div>
+
         </div>
     </div>
 `)
+    const footer = _createModalFooter(options.footerButtons)
+    footer.appendAfter(modal.querySelector('[data-content]'))
     document.body.appendChild(modal)
     return modal
 }
 
-/*
-* title: string
-* closable: boolean
-* content: string
-* width: string('400px')
-* destroy(): void
-* ---------
-* window should be closed if user click X or gray overlay
-* setContent(html: string): void
-* onClose(): void
-* onOpen(): void
-* beforeClose(): boolean | true - window is closable
-* ---------
-* animate.css
-* different type of animation
-* */
 $.modal = function (options) {
     const ANIMATION_SPEED = 200
     const $modal = _createModal(options)
     let closing = false
+    let destroyed = false
     
-    return {
+    const modal = {
         open() {
+            if (destroyed) {
+                return console.log('Modal destroyed')
+            }
             !closing && $modal.classList.add('open')
+            this.onOpen()
         },
         close() {
+            this.beforeClose()
             closing = true
             $modal.classList.remove('open')
             $modal.classList.add('hide')
             setTimeout(()=>{
                 $modal.classList.remove('hide')
                 closing = false
+                if (typeof options.onClose === 'function') {
+                    options.onClose()
+                }
             }, ANIMATION_SPEED)
         },
-        destroy() {
-        
+        onClose: options.onClose || function () {},
+        onOpen: options.onOpen || function () {},
+        beforeClose: options.beforeClose || function () {}
+    }
+    
+    const listener = ev => {
+        //close by clicking on cross mark or grayed space
+        if (ev.target.dataset.close && options.closable) {
+            modal.close()
         }
     }
+    $modal.addEventListener('click', listener)
+    
+    return Object.assign(modal, {
+        destroy() {
+            if (!destroyed) {
+                $modal.parentNode.removeChild($modal)
+                $modal.removeEventListener('click', listener)
+                destroyed = !destroyed
+            }
+        },
+        setContent(html) {
+            $modal.querySelector('[data-content]').innerHTML = html
+        }
+    })
+    
 }
